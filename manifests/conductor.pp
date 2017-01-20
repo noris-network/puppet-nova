@@ -51,12 +51,14 @@ class nova::conductor(
   include ::nova::db
   include ::nova::params
 
-  nova::generic_service { 'conductor':
-    enabled        => $enabled,
-    manage_service => $manage_service,
-    package_name   => $::nova::params::conductor_package_name,
-    service_name   => $::nova::params::conductor_service_name,
-    ensure_package => $ensure_package,
+  if($manage_service) {
+    nova::generic_service { 'conductor':
+      enabled        => $enabled,
+      manage_service => $manage_service,
+      package_name   => $::nova::params::conductor_package_name,
+      service_name   => $::nova::params::conductor_service_name,
+      ensure_package => $ensure_package,
+    }
   }
 
   if $workers {

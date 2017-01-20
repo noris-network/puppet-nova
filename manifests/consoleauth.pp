@@ -28,12 +28,14 @@ class nova::consoleauth(
   include ::nova::deps
   include ::nova::params
 
-  nova::generic_service { 'consoleauth':
-    enabled        => $enabled,
-    manage_service => $manage_service,
-    package_name   => $::nova::params::consoleauth_package_name,
-    service_name   => $::nova::params::consoleauth_service_name,
-    ensure_package => $ensure_package,
+  if($manage_service) {
+    nova::generic_service { 'consoleauth':
+      enabled        => $enabled,
+      manage_service => $manage_service,
+      package_name   => $::nova::params::consoleauth_package_name,
+      service_name   => $::nova::params::consoleauth_service_name,
+      ensure_package => $ensure_package,
+    }
   }
 
 }

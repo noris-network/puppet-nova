@@ -55,12 +55,14 @@ class nova::vncproxy(
 
   include ::nova::vncproxy::common
 
-  nova::generic_service { 'vncproxy':
-    enabled        => $enabled,
-    manage_service => $manage_service,
-    package_name   => $::nova::params::vncproxy_package_name,
-    service_name   => $::nova::params::vncproxy_service_name,
-    ensure_package => $ensure_package,
+  if($manage_service) {
+    nova::generic_service { 'vncproxy':
+      enabled        => $enabled,
+      manage_service => $manage_service,
+      package_name   => $::nova::params::vncproxy_package_name,
+      service_name   => $::nova::params::vncproxy_service_name,
+      ensure_package => $ensure_package,
+    }
   }
 
 }

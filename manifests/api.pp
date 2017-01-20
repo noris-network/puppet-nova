@@ -425,12 +425,14 @@ class nova::api(
 as a standalone service, or httpd for being run by a httpd server")
   }
 
-  nova::generic_service { 'api':
-    enabled        => $service_enabled,
-    manage_service => $manage_service,
-    ensure_package => $ensure_package,
-    package_name   => $::nova::params::api_package_name,
-    service_name   => $::nova::params::api_service_name,
+  if($manage_service) {
+    nova::generic_service { 'api':
+      enabled        => $service_enabled,
+      manage_service => $manage_service,
+      ensure_package => $ensure_package,
+      package_name   => $::nova::params::api_package_name,
+      service_name   => $::nova::params::api_service_name,
+    }
   }
 
   nova_config {
