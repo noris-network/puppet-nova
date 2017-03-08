@@ -252,13 +252,15 @@ class nova::compute (
     }
   }
 
-  nova::generic_service { 'compute':
-    enabled        => $enabled,
-    manage_service => $manage_service,
-    package_name   => $::nova::params::compute_package_name,
-    service_name   => $::nova::params::compute_service_name,
-    ensure_package => $ensure_package,
-    before         => Exec['networking-refresh']
+  if($manage_service) {
+    nova::generic_service { 'compute':
+      enabled        => $enabled,
+      manage_service => $manage_service,
+      package_name   => $::nova::params::compute_package_name,
+      service_name   => $::nova::params::compute_service_name,
+      ensure_package => $ensure_package,
+      before         => Exec['networking-refresh']
+    }
   }
 
   if $force_config_drive {
