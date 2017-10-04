@@ -4,14 +4,19 @@
 #
 # === Parameters:
 #
-# [*use_tls*]
-#   (optional) Use tls for remote connections to libvirt
-#   Defaults to false
+# [*transport*]
+#   (optional) Transport to use for live-migration.
+#   Valid options are 'tcp', 'tls', and 'ssh'.
+#   Defaults to 'tcp'
 #
 # [*auth*]
 #   (optional) Use this authentication scheme for remote libvirt connections.
 #   Valid options are none and sasl.
 #   Defaults to 'none'
+#
+# [*listen_address*]
+#   (optional) Bind libvirtd tcp/tls socket to the given address.
+#   Defaults to undef (bind to all addresses)
 #
 # [*live_migration_tunnelled*]
 #   (optional) Whether to use tunnelled migration, where migration data is
@@ -49,6 +54,20 @@
 #   (optional) Whether or not configure libvirt bits.
 #   Defaults to true.
 #
+# [*client_user*]
+#   (optional) Remote user to connect as.
+#   Only applies to ssh transport.
+#   Defaults to undef (root)
+#
+# [*client_port*]
+#   (optional) Remote port to connect to.
+#   Defaults to undef (default port for the transport)
+#
+# [*client_extraparams*]
+#   (optional) Hash of additional params to append to the live-migraition uri
+#   See https://libvirt.org/guide/html/Application_Development_Guide-Architecture-Remote_URIs.html
+#   Defaults to {}
+#
 #DEPRECATED PARAMETERS
 #
 # [*live_migration_flag*]
@@ -59,30 +78,55 @@
 #   (optional) Migration flags to be set for block migration (string value)
 #   Defaults to undef
 #
+# [*use_tls*]
+#   (optional) Use tls for remote connections to libvirt
+#   Defaults to false
+#   Deprecated by transport paramater.
+#
 class nova::migration::libvirt(
-  $use_tls                           = false,
+  $transport                         = undef,
   $auth                              = 'none',
+  $listen_address                    = undef,
   $live_migration_tunnelled          = $::os_service_default,
   $live_migration_completion_timeout = $::os_service_default,
   $live_migration_progress_timeout   = $::os_service_default,
   $override_uuid                     = false,
   $configure_libvirt                 = true,
   $configure_nova                    = true,
+  $client_user                       = undef,
+  $client_port                       = undef,
+  $client_extraparams                = {},
   #DEPRECATED PARAMETERS
   $live_migration_flag               = undef,
   $block_migration_flag              = undef,
+  $use_tls                           = false,
 ){
 
   include ::nova::deps
 
+  if $transport {
+    $transport_real = $transport
+  } elsif $use_tls {
+    warning(
+      'The use_tls parameter is now deprecated and will be removed in the Queens cycle. Please set transport=tls instead.'
+    )
+    $transport_real = 'tls'
+  } else {
+    $transport_real = 'tcp'
+  }
+
+  validate_re($transport_real, ['^tcp$', '^tls$', '^ssh$'], 'Valid options for transport are tcp, tls, ssh.')
   validate_re($auth, [ '^sasl$', '^none$' ], 'Valid options for auth are none and sasl.')
 
-  if $use_tls {
+  if $transport_real == 'tls' {
     $listen_tls = '1'
     $listen_tcp = '0'
-  } else {
+  } elsif $transport_real == 'tcp' {
     $listen_tls = '0'
     $listen_tcp = '1'
+  } else {
+    $listen_tls = '0'
+    $listen_tcp = '0'
   }
 
   if $live_migration_flag {
@@ -94,13 +138,35 @@ class nova::migration::libvirt(
   }
 
   if $configure_nova {
-    if $use_tls {
-      nova_config {
-        'libvirt/live_migration_uri': value => 'qemu+tls://%s/system';
+
+    if $transport_real == 'ssh' {
+      if $client_user {
+        $prefix =  "${client_user}@"
+      } else {
+        $prefix = ''
       }
+    } else {
+      $prefix = ''
     }
 
+    if $client_port {
+      $postfix = ":${client_port}"
+    } else {
+      $postfix = ''
+    }
+
+    if $client_extraparams != {} {
+      $extra_params_before_python_escape = join(uriescape(join_keys_to_values($client_extraparams, '=')), '&')
+      # Must escape % as nova interprets it incorrecly.
+      $extra_params = sprintf('?%s', regsubst($extra_params_before_python_escape, '%', '%%', 'G'))
+    } else {
+      $extra_params =''
+    }
+
+    $live_migration_uri = "qemu+${transport_real}://${prefix}%s${postfix}/system${extra_params}"
+
     nova_config {
+      'libvirt/live_migration_uri':                value => $live_migration_uri;
       'libvirt/live_migration_tunnelled':          value => $live_migration_tunnelled;
       'libvirt/live_migration_completion_timeout': value => $live_migration_completion_timeout;
       'libvirt/live_migration_progress_timeout':   value => $live_migration_progress_timeout;
@@ -152,14 +218,14 @@ class nova::migration::libvirt(
           tag   => 'libvirt-file_line',
         }
 
-        if $use_tls {
+        if $transport_real == 'tls' {
           file_line { '/etc/libvirt/libvirtd.conf auth_tls':
             path  => '/etc/libvirt/libvirtd.conf',
             line  => "auth_tls = \"${auth}\"",
             match => 'auth_tls =',
             tag   => 'libvirt-file_line',
           }
-        } else {
+        } elsif $transport_real == 'tcp' {
           file_line { '/etc/libvirt/libvirtd.conf auth_tcp':
             path  => '/etc/libvirt/libvirtd.conf',
             line  => "auth_tcp = \"${auth}\"",
@@ -168,11 +234,22 @@ class nova::migration::libvirt(
           }
         }
 
-        file_line { '/etc/sysconfig/libvirtd libvirtd args':
-          path  => '/etc/sysconfig/libvirtd',
-          line  => 'LIBVIRTD_ARGS="--listen"',
-          match => 'LIBVIRTD_ARGS=',
-          tag   => 'libvirt-file_line',
+        if $listen_address {
+          file_line { '/etc/libvirt/libvirtd.conf listen_address':
+            path  => '/etc/libvirt/libvirtd.conf',
+            line  => "listen_addr = \"${listen_address}\"",
+            match => 'listen_addr =',
+            tag   => 'libvirt-file_line',
+          }
+        }
+
+        if $transport_real != 'ssh' {
+          file_line { '/etc/sysconfig/libvirtd libvirtd args':
+            path  => '/etc/sysconfig/libvirtd',
+            line  => 'LIBVIRTD_ARGS="--listen"',
+            match => 'LIBVIRTD_ARGS=',
+            tag   => 'libvirt-file_line',
+          }
         }
       }
 
@@ -191,14 +268,14 @@ class nova::migration::libvirt(
           tag   => 'libvirt-file_line',
         }
 
-        if $use_tls {
+        if $transport_real == 'tls' {
           file_line { '/etc/libvirt/libvirtd.conf auth_tls':
             path  => '/etc/libvirt/libvirtd.conf',
             line  => "auth_tls = \"${auth}\"",
             match => 'auth_tls =',
             tag   => 'libvirt-file_line',
           }
-        } else {
+        } elsif $transport_real == 'tcp' {
           file_line { '/etc/libvirt/libvirtd.conf auth_tcp':
             path  => '/etc/libvirt/libvirtd.conf',
             line  => "auth_tcp = \"${auth}\"",
@@ -207,19 +284,30 @@ class nova::migration::libvirt(
           }
         }
 
-        if $::operatingsystem == 'Ubuntu' and versioncmp($::operatingsystemmajrelease, '16') >= 0 {
-          # If systemd is being used then libvirtd is already being launched correctly and
-          # adding -d causes a second consecutive start to fail which causes puppet to fail.
-          $libvirtd_opts = 'libvirtd_opts="-l"'
-        } else {
-          $libvirtd_opts = 'libvirtd_opts="-d -l"'
+        if $listen_address {
+          file_line { '/etc/libvirt/libvirtd.conf listen_address':
+            path  => '/etc/libvirt/libvirtd.conf',
+            line  => "listen_addr = \"${listen_address}\"",
+            match => 'listen_addr =',
+            tag   => 'libvirt-file_line',
+          }
         }
 
-        file_line { "/etc/default/${::nova::compute::libvirt::libvirt_service_name} libvirtd opts":
-          path  => "/etc/default/${::nova::compute::libvirt::libvirt_service_name}",
-          line  => $libvirtd_opts,
-          match => 'libvirtd_opts=',
-          tag   => 'libvirt-file_line',
+        if $transport_real != 'ssh' {
+          if $::operatingsystem == 'Ubuntu' and versioncmp($::operatingsystemmajrelease, '16') >= 0 {
+            # If systemd is being used then libvirtd is already being launched correctly and
+            # adding -d causes a second consecutive start to fail which causes puppet to fail.
+            $libvirtd_opts = 'libvirtd_opts="-l"'
+          } else {
+            $libvirtd_opts = 'libvirtd_opts="-d -l"'
+          }
+
+          file_line { "/etc/default/${::nova::compute::libvirt::libvirt_service_name} libvirtd opts":
+            path  => "/etc/default/${::nova::compute::libvirt::libvirt_service_name}",
+            line  => $libvirtd_opts,
+            match => 'libvirtd_opts=',
+            tag   => 'libvirt-file_line',
+          }
         }
       }
 

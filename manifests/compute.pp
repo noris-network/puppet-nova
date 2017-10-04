@@ -87,17 +87,18 @@
 #   (optional) Pci passthrough list of hash.
 #   Defaults to $::os_service_default
 #   Example of format:
-#  "[ { 'vendor_id':'1234','product_id':'5678' },
-#     { 'vendor_id':'4321','product_id':'8765','physical_network':'default' } ] "
+#   [ { "vendor_id" => "1234","product_id" => "5678" },
+#     { "vendor_id" => "4321","product_id" => "8765", "physical_network" => "default" } ]
 #
 #  [*config_drive_format*]
 #    (optional) Config drive format. One of iso9660 (default) or vfat
 #    Defaults to undef
 #
 #  [*allow_resize_to_same_host*]
-#    (optional) Allow destination machine to match source for resize.
-#    Useful when testing in single-host environments.
-#    Defaults to false
+#   (optional) Allow destination machine to match source for resize.
+#   Useful when testing in single-host environments. Note that this
+#   can also be set in the api.pp class.
+#   Defaults to false
 #
 #  [*resize_confirm_window*]
 #   (optional) Automatically confirm resizes after N seconds.
@@ -233,7 +234,7 @@ is used. It will be removed once Nova removes it.")
   # the value is computed in a function and it makes things more complex. Let's just check if
   # a value is set or if it's empty.
   if !is_service_default($pci_passthrough) and !empty($pci_passthrough) {
-    $pci_passthrough_real = check_array_of_hash($pci_passthrough)
+    $pci_passthrough_real = to_array_of_json_strings($pci_passthrough)
   } else {
     $pci_passthrough_real = $::os_service_default
   }
@@ -252,7 +253,6 @@ is used. It will be removed once Nova removes it.")
     'DEFAULT/reserved_host_memory_mb':           value => $reserved_host_memory;
     'DEFAULT/compute_manager':                   value => $compute_manager;
     'DEFAULT/heal_instance_info_cache_interval': value => $heal_instance_info_cache_interval;
-    'DEFAULT/allow_resize_to_same_host':         value => $allow_resize_to_same_host;
     'DEFAULT/pci_passthrough_whitelist':         value => $pci_passthrough_real;
     'DEFAULT/resize_confirm_window':             value => $resize_confirm_window;
     'DEFAULT/vcpu_pin_set':                      value => $vcpu_pin_set_real;
@@ -262,6 +262,8 @@ is used. It will be removed once Nova removes it.")
     'barbican/barbican_endpoint':                value => $barbican_endpoint;
     'barbican/barbican_api_version':             value => $barbican_api_version;
   }
+
+  ensure_resource('nova_config', 'DEFAULT/allow_resize_to_same_host', { value => $allow_resize_to_same_host })
 
   if ($vnc_enabled) {
     include ::nova::vncproxy::common

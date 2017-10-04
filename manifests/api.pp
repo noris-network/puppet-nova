@@ -65,15 +65,21 @@
 #   (optional) Run nova-manage api_db sync on api nodes after installing the package.
 #   Defaults to true
 #
+# [*db_online_data_migrations*]
+#   (optional) Run nova-manage db online_data_migrations on api nodes after
+#   installing the package - required on upgrade.
+#   Defaults to false.
+#
 # [*neutron_metadata_proxy_shared_secret*]
 #   (optional) Shared secret to validate proxies Neutron metadata requests
 #   Defaults to undef
 #
 # [*pci_alias*]
-#   (optional) Pci passthrough for controller:
-#   Defaults to undef
-#   Example
-#   "[ {'vendor_id':'1234', 'product_id':'5678', 'name':'default'}, {...} ]"
+#   (optional) A list of pci alias hashes
+#   Defaults to $::os_service_default
+#   Example:
+#   [{"vendor_id" => "1234", "product_id" => "5678", "name" => "default"},
+#    {"vendor_id" => "1234", "product_id" => "6789", "name" => "other"}]
 #
 # [*ratelimits*]
 #   (optional) A string that is a semicolon-separated list of 5-tuples.
@@ -199,6 +205,12 @@
 #   (optional) Whether the cinder::client class should be used to install the cinder client.
 #   Defaults to true
 #
+#  [*allow_resize_to_same_host*]
+#   (optional) Allow destination machine to match source for resize. Note that this
+#   is also settable in the compute class. In some sitautions you need it set here
+#   and in others you need it set there.
+#   Defaults to false
+#
 # DEPRECATED
 #
 # [*keystone_ec2_url*]
@@ -271,9 +283,10 @@ class nova::api(
   $metadata_workers                     = $::processorcount,
   $sync_db                              = true,
   $sync_db_api                          = true,
+  $db_online_data_migrations            = false,
   $neutron_metadata_proxy_shared_secret = undef,
   $default_floating_pool                = 'nova',
-  $pci_alias                            = undef,
+  $pci_alias                            = $::os_service_default,
   $ratelimits                           = undef,
   $ratelimits_factory                   =
     'nova.api.openstack.compute.limits:RateLimitingMiddleware.factory',
@@ -298,6 +311,7 @@ class nova::api(
   $enable_instance_password             = $::os_service_default,
   $password_length                      = $::os_service_default,
   $install_cinder_client                = true,
+  $allow_resize_to_same_host            = false,
   # DEPRECATED PARAMETER
   $conductor_workers                    = undef,
   $ec2_listen_port                      = undef,
@@ -496,6 +510,9 @@ as a standalone service, or httpd for being run by a httpd server")
   if $sync_db_api {
     include ::nova::db::sync_api
   }
+  if $db_online_data_migrations {
+    include ::nova::db::online_data_migrations
+  }
 
   # Remove auth configuration from api-paste.ini
   nova_paste_api_ini {
@@ -509,10 +526,13 @@ as a standalone service, or httpd for being run by a httpd server")
     'filter:authtoken/auth_admin_prefix': ensure => absent;
   }
 
-  if $pci_alias {
-    nova_config {
-      'DEFAULT/pci_alias': value => check_array_of_hash($pci_alias);
-    }
+  if !is_service_default($pci_alias) and !empty($pci_alias) {
+    $pci_alias_real = to_array_of_json_strings($pci_alias)
+  } else {
+    $pci_alias_real = $::os_service_default
+  }
+  nova_config {
+    'DEFAULT/pci_alias': value => $pci_alias_real;
   }
 
   if $validate {
@@ -534,4 +554,6 @@ as a standalone service, or httpd for being run by a httpd server")
     $validation_options_hash = merge ($defaults, $validation_options)
     create_resources('openstacklib::service_validation', $validation_options_hash, {'subscribe' => 'Service[nova-api]'})
   }
+
+  ensure_resource('nova_config', 'DEFAULT/allow_resize_to_same_host', { value => $allow_resize_to_same_host })
 }

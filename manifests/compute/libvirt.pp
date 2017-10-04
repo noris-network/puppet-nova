@@ -33,6 +33,11 @@
 #   cpu_mode="custom" and virt_type="kvm|qemu".
 #   Defaults to undef
 #
+# [*libvirt_snapshot_image_format*]
+#   (optional) Format to save snapshots to. Some filesystems
+#   have a preference and only operate on raw or qcow2
+#   Defaults to $::os_service_default
+#
 # [*libvirt_disk_cachemodes*]
 #   (optional) A list of cachemodes for different disk types, e.g.
 #   ["file=directsync", "block=none"]
@@ -43,6 +48,10 @@
 # [*libvirt_hw_disk_discard*]
 #   (optional) Discard option for nova managed disks. Need Libvirt(1.0.6)
 #   Qemu1.5 (raw format) Qemu1.6(qcow2 format).
+#   Defaults to $::os_service_default
+#
+# [*libvirt_hw_machine_type*]
+#   (optional) Option to specify a default machine type per host architecture.
 #   Defaults to $::os_service_default
 #
 # [*libvirt_inject_password*]
@@ -111,8 +120,10 @@ class nova::compute::libvirt (
   $migration_support                          = false,
   $libvirt_cpu_mode                           = false,
   $libvirt_cpu_model                          = undef,
+  $libvirt_snapshot_image_format              = $::os_service_default,
   $libvirt_disk_cachemodes                    = [],
   $libvirt_hw_disk_discard                    = $::os_service_default,
+  $libvirt_hw_machine_type                    = $::os_service_default,
   $libvirt_inject_password                    = false,
   $libvirt_inject_key                         = false,
   $libvirt_inject_partition                   = -2,
@@ -151,11 +162,7 @@ class nova::compute::libvirt (
   }
 
   if $migration_support {
-    if $vncserver_listen != '0.0.0.0' and $vncserver_listen != '::0' {
-      fail('For migration support to work, you MUST set vncserver_listen to \'0.0.0.0\' or \'::0\'')
-    } else {
-      include ::nova::migration::libvirt
-    }
+    include ::nova::migration::libvirt
   }
 
   # manage_libvirt_services is here for backward compatibility to support
@@ -181,14 +188,16 @@ class nova::compute::libvirt (
   }
 
   nova_config {
-    'DEFAULT/compute_driver':   value => $compute_driver;
-    'vnc/vncserver_listen':     value => $vncserver_listen;
-    'libvirt/virt_type':        value => $libvirt_virt_type;
-    'libvirt/cpu_mode':         value => $libvirt_cpu_mode_real;
-    'libvirt/inject_password':  value => $libvirt_inject_password;
-    'libvirt/inject_key':       value => $libvirt_inject_key;
-    'libvirt/inject_partition': value => $libvirt_inject_partition;
-    'libvirt/hw_disk_discard':  value => $libvirt_hw_disk_discard;
+    'DEFAULT/compute_driver':        value => $compute_driver;
+    'vnc/vncserver_listen':          value => $vncserver_listen;
+    'libvirt/virt_type':             value => $libvirt_virt_type;
+    'libvirt/cpu_mode':              value => $libvirt_cpu_mode_real;
+    'libvirt/snapshot_image_format': value => $libvirt_snapshot_image_format;
+    'libvirt/inject_password':       value => $libvirt_inject_password;
+    'libvirt/inject_key':            value => $libvirt_inject_key;
+    'libvirt/inject_partition':      value => $libvirt_inject_partition;
+    'libvirt/hw_disk_discard':       value => $libvirt_hw_disk_discard;
+    'libvirt/hw_machine_type':       value => $libvirt_hw_machine_type;
   }
 
   # cpu_model param is only valid if cpu_mode=custom
