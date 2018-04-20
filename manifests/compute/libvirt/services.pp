@@ -91,7 +91,7 @@ class nova::compute::libvirt::services (
       name     => $virtlock_service_name,
       provider => $::nova::params::special_service_provider,
     }
-    Package<| name == 'libvirt' |> -> Service['virtlockd']
+    Anchor['nova::install::end'] -> Service['virtlockd']
   }
 
   if $virtlog_service_name {
@@ -101,7 +101,7 @@ class nova::compute::libvirt::services (
       name     => $virtlog_service_name,
       provider => $::nova::params::special_service_provider,
     }
-    Package<| name == 'libvirt' |> -> Service['virtlogd']
+    Anchor['nova::install::end'] -> Service['virtlogd']
   }
 
 }
