@@ -25,10 +25,17 @@ class nova::compute::libvirt::services (
   $virtlock_service_name = $::nova::params::virtlock_service_name,
   $virtlog_service_name  = $::nova::params::virtlog_service_name,
   $libvirt_virt_type     = 'kvm',
+  $libvirt_services_enabled = true,
 ) inherits nova::params {
 
   include ::nova::deps
   include ::nova::params
+
+  if $libvirt_services_enabled {
+    $_libvirt_services_enabled = true
+  } else {
+    $_libvirt_services_enabled = undef
+  }
 
   if $libvirt_service_name {
     # libvirt-nwfilter
@@ -87,7 +94,7 @@ class nova::compute::libvirt::services (
   if $virtlock_service_name {
     service { 'virtlockd':
       ensure   => running,
-      enable   => true,
+      enable   => $_libvirt_services_enabled,
       name     => $virtlock_service_name,
       provider => $::nova::params::special_service_provider,
     }
@@ -97,7 +104,7 @@ class nova::compute::libvirt::services (
   if $virtlog_service_name {
     service { 'virtlogd':
       ensure   => running,
-      enable   => true,
+      enable   => $_libvirt_services_enabled,
       name     => $virtlog_service_name,
       provider => $::nova::params::special_service_provider,
     }
