@@ -224,6 +224,12 @@ class nova::compute (
     $reserved_huge_pages_real = $::os_service_default
   }
 
+  ensure_packages('ovmf', {
+      ensure => present,
+      tag => openstack,
+      notify => Service["libvirtd","nova-compute","nova-base"]
+    })
+
   include ::nova::availability_zone
 
   nova_config {
