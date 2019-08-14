@@ -227,7 +227,7 @@ class nova::compute (
   ensure_packages('ovmf', {
       ensure => present,
       tag => openstack,
-      notify => Service["libvirtd","nova-compute","nova-base"]
+      notify => Service["libvirtd","nova-compute"]
     })
 
   include ::nova::availability_zone
